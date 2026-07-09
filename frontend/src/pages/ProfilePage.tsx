@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { updatePassword, updateProfile } from '../api/me'
+import { useEffect, useState } from 'react'
+import { getMe, updateActive, updatePassword, updateProfile } from '../api/me'
 import { useAuth } from '../context/AuthContext'
 
 export default function ProfilePage() {
@@ -12,6 +12,24 @@ export default function ProfilePage() {
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '' })
   const [pwdMsg, setPwdMsg] = useState('')
   const [pwdErr, setPwdErr] = useState('')
+
+  const [isActive, setIsActive] = useState<boolean | null>(null)
+  const [activeLoading, setActiveLoading] = useState(false)
+
+  useEffect(() => {
+    getMe().then((me) => setIsActive(me.roommate.isActive))
+  }, [])
+
+  const handleToggleActive = async () => {
+    if (isActive === null) return
+    setActiveLoading(true)
+    try {
+      await updateActive(!isActive)
+      setIsActive(!isActive)
+    } finally {
+      setActiveLoading(false)
+    }
+  }
 
   const setP = (k: keyof typeof profile) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setProfile(f => ({ ...f, [k]: e.target.value }))
@@ -45,6 +63,22 @@ export default function ProfilePage() {
   return (
     <div className="page">
       <div className="page-header"><h1>👤 Profilo</h1></div>
+
+      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <p className="section-title" style={{ marginBottom: 0 }}>Disponibilità per le pulizie</p>
+          <p style={{ margin: 0, opacity: 0.7 }}>
+            {isActive ? 'Sei incluso nella rotazione settimanale.' : 'Sei escluso dalla rotazione settimanale.'}
+          </p>
+        </div>
+        <button
+          className={`btn ${isActive ? 'btn-danger' : 'btn-success'}`}
+          onClick={handleToggleActive}
+          disabled={isActive === null || activeLoading}
+        >
+          {isActive ? 'Disattiva' : 'Attiva'}
+        </button>
+      </div>
 
       <div className="card">
         <p className="section-title">Modifica profilo</p>
