@@ -27,19 +27,28 @@ public class RotationService {
     public void generateWeeklyAssignments (List<Roommate> activeRoommates, LocalDate weekStart){
         List<Room> availableRooms = getAvailableRooms(weekStart);
         List<Assignment> assignmentsToAbandon = new ArrayList<>();
-        Collections.shuffle(availableRooms);
 
-        for (Roommate roommate : activeRoommates) {
+        List<Roommate> sortedRoommates = activeRoommates.stream()
+                .sorted(Comparator.comparingLong(Roommate::getId))
+                .collect(Collectors.toList());
+
+        int numRooms = availableRooms.size();
+        long weeksSinceEpoch = ChronoUnit.WEEKS.between(LocalDate.EPOCH, weekStart);
+        int offset = (int) (weeksSinceEpoch % numRooms);
+
+        for (int i = 0; i < sortedRoommates.size(); i++) {
+            Roommate roommate = sortedRoommates.get(i);
+
             assignmentService.findByRoommateAndStatus(roommate, AssignmentStatus.PENDING)
                     .ifPresent(a -> {
                         a.setStatus(AssignmentStatus.ABANDONED);
                         assignmentsToAbandon.add(a);
                     });
 
-            if (availableRooms.isEmpty()) {
+            if (i >= numRooms) {
                 continue;
             }
-            Room assignedRoom = availableRooms.remove(0);
+            Room assignedRoom = availableRooms.get((i + offset) % numRooms);
 
             Assignment assignment = new Assignment();
             assignment.setStatus(AssignmentStatus.PENDING);
@@ -56,21 +65,25 @@ public class RotationService {
     }
 
     private List<Room> getAvailableRooms(LocalDate weekStart) {
-        List<RoomType> roomTypes = new ArrayList<>(Arrays.asList(
-                RoomType.BAGNO1, RoomType.BAGNO2, RoomType.CORRIDOIO, RoomType.CUCINA
-        ));
-
         Map<String, Room> roomMap = roomRepository.findAll().stream()
                 .collect(Collectors.toMap(Room::getName, r -> r));
 
-        if (shouldIncludeBalcony(weekStart, roomMap.get(RoomType.BALCONE.getDisplayName()))) {
-            roomTypes.add(RoomType.BALCONE);
-        }
-
-        return roomTypes.stream()
+        List<Room> rooms = new ArrayList<>(Arrays.asList(
+                RoomType.BAGNO1, RoomType.BAGNO2, RoomType.CORRIDOIO, RoomType.CUCINA
+        )).stream()
                 .map(type -> roomMap.get(type.getDisplayName()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
+        Room balcony = roomMap.get(RoomType.BALCONE.getDisplayName());
+        if (balcony != null && shouldIncludeBalcony(weekStart, balcony)) {
+            // Replace a standard room with the balcony, cycling through which one gets replaced
+            long weeksSinceEpoch = ChronoUnit.WEEKS.between(LocalDate.EPOCH, weekStart);
+            int replaceIdx = (int) ((weeksSinceEpoch / HOW_OFTEN_SHOULD_CLEAN_BALCONY) % rooms.size());
+            rooms.set(replaceIdx, balcony);
+        }
+
+        return rooms;
     }
 
     private boolean shouldIncludeBalcony(LocalDate weekStart, Room balcony){
